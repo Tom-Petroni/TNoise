@@ -1,4 +1,4 @@
-"""TNoise Nuke plugin loader — place this file and the TNoise/ folder in your .nuke directory."""
+"""TNoise init.py to load plugin in Nuke."""
 
 import os
 
