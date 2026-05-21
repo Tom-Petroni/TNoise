@@ -1,4 +1,4 @@
-name: Nuke Plugin Build
+﻿name: Nuke Plugin Build
 
 on:
   pull_request:
@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       nuke_versions:
-        description: "Comma-separated Nuke minor versions (example: 15.1,16.0)"
+        description: "Comma-separated Nuke minor versions (example: 15.1,16.0,17.0)"
         required: false
-        default: "13.0,13.1,13.2,14.0,14.1,15.0,15.1,15.2,16.0"
+        default: "13.0,13.1,13.2,14.0,14.1,15.0,15.1,15.2,16.0,17.0"
       include_macos:
         description: "Include macOS builds (x86_64 and arm64 when supported)"
         required: false
@@ -75,7 +75,7 @@ jobs:
           import json
           import os
 
-          default_versions = ["13.0", "13.1", "13.2", "14.0", "14.1", "15.0", "15.1", "15.2", "16.0"]
+          default_versions = ["13.0", "13.1", "13.2", "14.0", "14.1", "15.0", "15.1", "15.2", "16.0", "17.0"]
 
           def parse_versions(raw: str):
               if not raw:
@@ -101,6 +101,7 @@ jobs:
                   "os_name": "linux",
                   "arch_name": "x86_64",
                   "lib_ext": "so",
+                  "lib_prefix": "lib",
               },
               {
                   "runner": "windows-latest",
@@ -108,6 +109,7 @@ jobs:
                   "os_name": "windows",
                   "arch_name": "x86_64",
                   "lib_ext": "dll",
+                  "lib_prefix": "",
               },
           ]
 
@@ -119,8 +121,6 @@ jobs:
                   include.append(row)
 
               if include_macos:
-                  # Nuke 15.1 does not ship a valid x86_64 macOS binary (NukeVersionParser
-                  # returns an aarch64 binary for that slot), so we skip it.
                   if version != "15.1":
                       include.append(
                           {
@@ -129,6 +129,7 @@ jobs:
                               "os_name": "macos",
                               "arch_name": "x86_64",
                               "lib_ext": "dylib",
+                              "lib_prefix": "lib",
                               "nuke_version": version,
                               "use_zig": "true",
                           }
@@ -142,13 +143,14 @@ jobs:
                               "os_name": "macos",
                               "arch_name": "aarch64",
                               "lib_ext": "dylib",
+                              "lib_prefix": "lib",
                               "nuke_version": version,
                           }
                       )
 
           matrix = {"include": include}
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
-              handle.write(f"matrix={json.dumps(matrix)}\n")
+              handle.write(f"matrix={json.dumps(matrix)}\\n")
 
           print(json.dumps(matrix))
           PY
@@ -158,7 +160,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     needs: matrix
     runs-on: ${{ matrix.runner }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
@@ -184,7 +185,7 @@ jobs:
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           choco install 7zip lessmsi -y
 
@@ -213,6 +214,7 @@ jobs:
           OS_NAME: ${{ matrix.os_name }}
           ARCH_NAME: ${{ matrix.arch_name }}
           LIB_EXT: ${{ matrix.lib_ext }}
+          LIB_PREFIX: ${{ matrix.lib_prefix }}
         run: |
           python - <<'PY'
           import os
@@ -225,7 +227,7 @@ jobs:
               / os.environ["NUKE_VERSION"]
               / os.environ["OS_NAME"]
               / os.environ["ARCH_NAME"]
-              / f"TNoise.{os.environ['LIB_EXT']}"
+              / f"{os.environ['LIB_PREFIX']}TNoise.{os.environ['LIB_EXT']}"
           )
           if not expected.is_file():
               print(f"Missing expected output: {expected}")
@@ -239,13 +241,11 @@ jobs:
           name: tnoise-${{ matrix.nuke_version }}-${{ matrix.target_platform }}
           if-no-files-found: error
           path: |
-            README.md
-            docs/INSTALL.md
-            docs/NODE_REFERENCE.md
-            init.py
-            TNoise/*.py
-            TNoise/resources/*
-            TNoise/bin/${{ matrix.nuke_version }}/${{ matrix.os_name }}/${{ matrix.arch_name }}/TNoise.${{ matrix.lib_ext }}
+            work/README.md
+            work/init.py
+            work/TNoise/*.py
+            work/TNoise/resources/*
+            work/TNoise/bin/${{ matrix.nuke_version }}/${{ matrix.os_name }}/${{ matrix.arch_name }}/${{ matrix.lib_prefix }}TNoise.${{ matrix.lib_ext }}
 
   bundle:
     name: Bundle Multi-Platform Package
@@ -295,5 +295,4 @@ jobs:
           files: ${{ steps.zip.outputs.zip_name }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          repository: Tom-Petroni/TNoise
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
